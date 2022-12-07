@@ -2,7 +2,7 @@
  GPort is an Import-Export Addon for Blender, and a tool for the G10 Engine. 
 
 ## Background
- Game engines are used for making games, and games need assets. Thus, game engines need a way to manage assets. Creating assets is usually the responsibility of the artist, thus the artist needs a way to create their assets. Assets are well defined in G10 (see G10 Schema), however manual asset creation is tedious, error prone, and for most people, utterly unacceptable. Thus, an automated software solution for creating game assets is required. Said software solution is GPort. 
+ Game engines are used for making games, and games need assets. Thus, game engines need a way to manage assets. Creating assets is usually the responsibility of the artist, thus the artist needs a way to create their assets. Assets are well defined in G10 (see [G10 Schema](https://github.com/Jacob-C-Smith/G10-Schema)), however manual asset creation is tedious, error prone, difficult to optimize, and for most people, utterly unacceptable. Thus, an automated software solution for creating game assets is required. Said software solution is GPort. 
 
 ## Using GPort
    
@@ -13,13 +13,13 @@
 
    ### Creating a GPort project
 
-   GPort stores your assets in a project directory. To use GPort, you must first configure a project directory. This should be an empty directory somewhere on your filesystem. Configure your project in the addon preferences panel. You can configure as many as you'd like, using the ```+``` and ```✕``` buttons to add and remove projects.
+   GPort stores your assets in a project directory. To use GPort, you must first configure a project directory. This should be an empty directory somewhere on your filesystem. Configure your project in the addon preferences panel. You can configure as many as you'd like, using the ```➕``` and ```❌``` buttons to add and remove projects.
 
    ![Project configuration](Projects.png)
 
    ### Exporting a scene
 
-   TODO: DOCUMENT
+   To export a scene, navigate to File > Export > G10 Scene (.json)
 
    ### Importing a scene
 
@@ -34,6 +34,6 @@
 
       1. Blender is open source. (Anyone can use Blender) 
       2. Blender is very popular.
-      3. Blender has a powerful raytracer which can be repurposed for precomputing light
+      3. Blender has a powerful raytracer, which can be repurposed for precomputing light
       4. Blender has a well documented Python API
       5. I have many years of experiance with Blender

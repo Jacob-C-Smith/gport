@@ -32,9 +32,15 @@ from .g10_blender import (
     Bone,
     Pose,
     Action,
-    Rig
+    Rig,
+    set_export_context,
+    clear_export_context
 )
 
+last_shader_option = ""
+
+g10_source: dict = os.environ["G10_SOURCE_PATH"]
+shader_files     = os.listdir(f"{g10_source}/G10/shaders/")
 
 def add_project_names_cb(self, context):
     items = []
@@ -42,12 +48,20 @@ def add_project_names_cb(self, context):
         items.append((a.name, a.name, ""))
     return items
 
+def add_shader_names_cb(self, context):
+    items = []
+    for a in shader_files:
+        if str(a).endswith(".json"):
+            z = f"{a.rsplit('.json')[0]}"
+            items.append( ( z, z, "") )
+    return items
+
 class gxport(Operator, ExportHelper):
 
     """
-       GXPort
-       TODO: light probes
+       GPort - gxport
     """
+
     bl_idname = "gport.gxport" 
     bl_label  = "Export a G10 scene"
     
@@ -75,16 +89,6 @@ class gxport(Operator, ExportHelper):
         ("Lights"      , "Lights"      , "Lights"),
         ("Light probes", "Light probes", "Light probes" ),
         ("Empties"     , "Empties"     , "Empties" )
-    }
-
-    DEFAULT_SHADERS = {
-        ("PBR"         , "Automatic PBR"   , "Auto PBR"),
-        ("Forward PBR" , "Forward PBR"     , "Forward PBR"),
-        ("Deferred PBR", "Deferred PBR"    , "Deferred PBR"),
-        ("Diffuse"     , "Default Phong"   , "Diffuse"),
-        ("Textured"    , "Default Textured", "Textured"),
-        ("PBR Height"  , "PBR + Height"    , "PBR Height"),
-        ("Custom"      , "Custom"          , "Custom")
     }
 
     IMAGE_FORMATS = {
@@ -149,7 +153,7 @@ class gxport(Operator, ExportHelper):
     # Properties for global orientation
     forward_axis: EnumProperty(
         name        =  "Forward",
-        default     = 'Y+',
+        default     = 'Y-',
         items       = OFFSET_MODES,
         description = "Global foraward axis"
     )
@@ -200,14 +204,13 @@ class gxport(Operator, ExportHelper):
     # Properties for shaders
     shader_option: EnumProperty(
         name        = "",
-        default     = "PBR",
-        items       = DEFAULT_SHADERS,
+        items       = add_shader_names_cb,
         description = "The shader that will be used to draw entities"
     )
     
     shader_path: StringProperty(
         name    = "Path",
-        default = "G10/G10 PBR.json"
+        default = "G10/shader/Wireframe.json"
     )
     
     scene_search: StringProperty(
@@ -219,31 +222,31 @@ class gxport(Operator, ExportHelper):
     use_albedo: BoolProperty(
         name        = "Albedo",
         description = "The albedo map is the base color input that defines the diffuse reflectivity of the surface.",
-        default     = True
+        default     = False
     )
     
     use_normal: BoolProperty(
         name        = "Normal",
         description = "The normal map give your object texture by changing the direction light is reflected off of surfaces.",
-        default     = True
+        default     = False
     )
     
     use_rough: BoolProperty(
         name        = "Rough",
         description = "The rough map defines how light scatters across the surface.",
-        default     = True
+        default     = False
     )
     
     use_metal: BoolProperty(
         name        = "Metal",
         description = "The metal map defines where the surface is made of metal.",
-        default     = True
+        default     = False
     )
     
     use_ao: BoolProperty(
         name        = "Ambient Occlusion",
         description = "The ambient occlusion map creates softer & more realistic global shadows around the edges of objects.",
-        default     = True
+        default     = False
     )
     
     use_height: BoolProperty(
@@ -251,24 +254,31 @@ class gxport(Operator, ExportHelper):
         description = "Height maps alter the geometry of an object.",
         default     = False
     )
+
+    use_emit: BoolProperty(
+        name        = "Emit",
+        description = "Emission maps make objects bright",
+        default     = False
+    )
     
+
     # Vertex group properties
     use_geometric: BoolProperty(
         name        ="Geometry",
         description ="Geometric coordinates.",
-        default     =True
+        default     = False
     )
 
     use_uv: BoolProperty(
         name        = "Texture coordinates.",
         description = "Texture coordinates.",
-        default     = True
+        default     = False
     )
 
     use_normals: BoolProperty(
         name        = "Normals",
         description = "Normals",
-        default     = True
+        default     = False
     )
 
     use_tangents: BoolProperty(
@@ -364,17 +374,24 @@ class gxport(Operator, ExportHelper):
         state['material textures'].append("metal"   if self.use_metal  else None)
         state['material textures'].append("ao"      if self.use_ao     else None)
         state['material textures'].append("height"  if self.use_height else None)
-
+        state['material textures'].append("emit"    if self.use_emit   else None)
+        
         # Shader settings
-        state['shader']                 = self.shader_path
+        state['shader']                 = f"{g10_source}/G10/shaders/{self.shader_option}.json"
+
+        print(f"GXPORT SHADER PATH {self.shader_option}")
 
         # Bake settings
         state['texture resolution']     = self.texture_resolution
         state['image format']           = self.image_format
         state['light probe resolution'] = self.light_probe_dim
 
+        set_export_context(state)
+
         # initialize project_path to None
         project_path = None
+
+        print(f"GXPORT STATE: {str(state)}")
 
         # Find the correct project path from the list of project paths
         for i in bpy.context.preferences.addons['gport'].preferences.prop_collection:
@@ -385,12 +402,15 @@ class gxport(Operator, ExportHelper):
 
         #bpy.context.space_data.params.directory = 
 
+
         # Create a scene object
         scene = Scene(bpy.context.scene)
         
         # Write it to the directory
         scene.write_to_directory(project_path if project_path is not None else self.filepath)
 
+        clear_export_context()
+        
         # Stop the timer
         end     = timer()
         seconds = end-start
@@ -572,7 +592,7 @@ class gxport(Operator, ExportHelper):
 
             elif o.type == 'EMPTY' and (self.scene_objects == 'All' or self.scene_objects == 'Empties'):
                 row = box.box()
-                print(str(o.name))
+
                 row.label(text=str(o.name),icon='OUTLINER_OB_EMPTY')
 
                 row.label(text=str("Transform"), icon='OBJECT_ORIGIN')
@@ -602,54 +622,90 @@ class gxport(Operator, ExportHelper):
 
         box.label(text='Shader', icon='NODE_MATERIAL')
 
-        box.prop(self,"shader_option")
-        if   self.shader_option == 'Custom':
-            box.prop(self,"shader_path")
-        elif self.shader_option == 'PBR':
-            self.shader_path = "G10/shaders/G10 PBR.json"
-            
-            self.use_albedo = True
-            self.use_normal = True
-            self.use_metal  = True
-            self.use_rough  = True
-            self.use_ao     = True
-            self.use_height = False
-            
+        global last_shader_option
 
-            self.use_geometric    = True
-            self.use_uv           = True
-            self.use_normals      = True
+        box.prop(self, "shader_option")
+        
+        if self.shader_option != last_shader_option:
+
+            last_shader_option = self.shader_option
+
+            items       : list = [ ]
+            shader_path : str  = None
+            shader_text : str  = None
+            shader_dict : dict = None
+            l     = os.listdir(f"{g10_source}/G10/shaders/")
+
+            for a in l:
+                if str(a).endswith(".json"):
+                    items.append(f"{a}")
+
+            s_name : str = last_shader_option
+            shader_path = f"{g10_source}/G10/shaders/{s_name}.json"
+
+            # Write the JSON data to the specified path
+            with open(shader_path, "r") as f:
+                try: shader_text = f.read()
+                except FileExistsError: pass
+
+            shader_dict = json.loads(shader_text)
+
+            self.use_geometric    = False
+            self.use_uv           = False
+            self.use_normals      = False
             self.use_tangents     = False
             self.use_bitangents   = False
             self.use_color        = False
             self.use_bone_groups  = False
             self.use_bone_weights = False
 
-        elif self.shader_option == 'Diffuse':
-            self.shader_path = "G10/shaders/G10 Phong.json" 
-            
-            self.use_albedo = True
-            self.use_normal = True
-            self.use_metal  = True
-            self.use_rough  = False
-            self.use_ao     = False
-            self.use_height = False
-        elif self.shader_option == 'Textured':
-            self.shader_path = "G10/shaders/G10 Textured.json"     
+            self.use_albedo       = False
+            self.use_rough        = False
+            self.use_metal        = False
+            self.use_normal       = False
+            self.use_ao           = False
+            self.use_height       = False
+            self.use_emit         = False
 
-            self.use_albedo = True
-            self.use_normal = False
-            self.use_metal  = False
-            self.use_rough  = False
-            self.use_ao     = False
-            self.use_height = False
-        box.label(text=str(self.shader_path))
+            # Set vertex groups for selected shader
+            for vert_group in shader_dict['in']:
+                if vert_group['name'] == 'geometry':
+                    self.use_geometric = True
+                if vert_group['name'] == 'UV':
+                    self.use_uv = True
+                if vert_group['name'] == 'normal':
+                    self.use_normals = True
+                if vert_group['name'] == 'tangent':
+                    self.use_tangents = True
+                if vert_group['name'] == 'bitangent':
+                    self.use_bitangents = True
+                if vert_group['name'] == 'color':
+                    self.use_color = True
+                if vert_group['name'] == 'Bone Groups':
+                    self.use_bone_groups = True
+                if vert_group['name'] == 'Bone Weights':
+                    self.use_bone_weights = True
 
-        global glob_shader_path
-        glob_shader_path = self.shader_path
-        
+            # Set material bake settings for selected shader
+            for s in shader_dict['sets']:
+                if s['name'] == 'material':
+                    for b in s['descriptors']:
+                        if b['name'] == 'albedo':
+                            self.use_albedo = True
+                        if b['name'] == 'rough':
+                            self.use_rough = True
+                        if b['name'] == 'metal':
+                            self.use_metal = True
+                        if b['name'] == 'normal':
+                            self.use_normal = True
+                        if b['name'] == 'ao':
+                            self.use_ao = True
+                        if b['name'] == 'height':
+                            self.use_height = True
+                        if b['name'] == 'emit':
+                            self.use_emit = True
         return
-    
+
     # Draw the material export options
     def draw_material_settings(self, context):
         layout = self.layout
@@ -663,7 +719,8 @@ class gxport(Operator, ExportHelper):
         box.prop(self, "use_metal")
         box.prop(self, "use_ao")
         box.prop(self, "use_height")
-        
+        box.prop(self, "use_emit")
+
         return
     
     # Draw the world settings
@@ -771,6 +828,7 @@ class gxport(Operator, ExportHelper):
 
     # Draw everything
     def draw(self, context):
+
         layout = self.layout
         layout.prop(self, "context_tab",expand=True)
     

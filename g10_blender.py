@@ -12,9 +12,24 @@ from bpy_extras.io_utils import ExportHelper, ImportHelper
 from bpy.types           import Operator, AddonPreferences
 
 # TODO: Fix these, maybe use a json file on the disk to cache them?
-materials: dict = {}
-entities:  dict = {}
-parts:     dict = {}
+materials      : dict = {}
+entities       : dict = {}
+parts          : dict = {}
+g10_source     : dict = os.environ["G10_SOURCE_PATH"]
+export_context : dict = None
+
+def set_export_context (context : dict):
+    global export_context
+
+    print(f"SET EXPORT CONTEXT STATE {context}")
+
+    export_context = context
+
+
+def clear_export_context ():
+    global export_context
+    
+    export_context = None
 
 class Light:
 
@@ -186,15 +201,15 @@ class Camera:
         self.where[2]             = object.matrix_world[2][3]
 
         # Set up the dictionary
-        self.json_data            = { }
-        self.json_data["$schema"] = "https://raw.githubusercontent.com/Jacob-C-Smith/G10-Schema/main/camera-schema.json"
-        self.json_data["name"]    = self.name
-        self.json_data["fov"]     = self.fov
-        self.json_data["near"]    = self.near
-        self.json_data["far"]     = self.far
-        self.json_data["target"]  = (self.target.copy())
-        self.json_data["up"]      = (self.up.copy())
-        self.json_data["where"]   = (self.where.copy())
+        self.json_data             = { }
+        self.json_data["$schema"]  = "https://raw.githubusercontent.com/Jacob-C-Smith/G10-Schema/main/camera-schema.json"
+        self.json_data["name"]     = self.name
+        self.json_data["fov"]      = self.fov
+        self.json_data["near"]     = self.near
+        self.json_data["far"]      = self.far
+        self.json_data["front"]    = (self.target.copy())
+        self.json_data["up"]       = (self.up.copy())
+        self.json_data["location"] = (self.where.copy())
 
         return
 
@@ -216,36 +231,20 @@ class Camera:
         return
 
     @staticmethod
-    def import_from_file(path: str):
-        
-        # Uninitialized data
-        camera_json   : dict  = None
+    def import_as_json  (camera_json : dict):
 
-        camera_name   : str   = None
-        camera_fov    : float = None
-        camera_near   : float = None
-        camera_far    : float = None
-        camera_target : list  = None
-        camera_up     : list  = None
-        camera_where  : list  = None
-        
-        # Open the camera file from the path
-        with open(path, "r") as f:
-
-            # Make a dictionary from the JSON
-            camera_json = json.load(f)
 
         # Copy out important properties
-        camera_name     = camera_json['name']
-        camera_where    = [ camera_json['where'][0], camera_json['where'][1], camera_json['where'][2] ]
-        camera_target   = [ camera_json['target'][0]   , camera_json['target'][1]   , camera_json['target'][2]    ]
-        camera_up       = [ camera_json['up'][0]      , camera_json['up'][1]      , camera_json['up'][2]       ]
-        camera_near     = float(camera_json['near'])
-        camera_far      = float(camera_json['far'])
-        camera_fov      = float(camera_json['fov'])
+        camera_name   : str   = camera_json['name']
+        camera_where  : float = [ camera_json['location'][0], camera_json['location'][1], camera_json['location'][2] ]
+        camera_target : float = [ camera_json['front'][0]   , camera_json['front'][1]   , camera_json['front'][2]    ]
+        camera_up     : float = [ camera_json['up'][0]      , camera_json['up'][1]      , camera_json['up'][2]       ]
+        camera_near   : list  = float(camera_json['near'])
+        camera_far    : list  = float(camera_json['far'])
+        camera_fov    : list  = float(camera_json['fov'])
 
         # Create a new camera
-        camera_data = bpy.data.cameras.new(name=camera_name+" data")
+        camera_data = bpy.data.cameras.new(name=f"{camera_name} data")
 
         camera_data.clip_start = camera_near
         camera_data.clip_end   = camera_far
@@ -266,13 +265,29 @@ class Camera:
         camera_object.matrix_world[1][1] = camera_up[1]
         camera_object.matrix_world[2][1] = camera_up[2]
 
-        print(str(camera_up))
-
         camera_object.matrix_world[0][2] = camera_target[0] * -1
         camera_object.matrix_world[1][2] = camera_target[1] * -1
         camera_object.matrix_world[2][2] = camera_target[2] * -1
 
-        print(str(camera_target))
+        return
+
+
+    @staticmethod
+    def import_from_file(path: str):
+        
+        # Uninitialized data
+        camera_json   : dict  = None
+
+        # Open the camera file from the path
+        try: 
+            with open(path, "r") as f:
+
+                # Make a dictionary from the JSON
+                camera_json = json.load(f)
+        except e:
+            print(e)
+
+        Camera.import_as_json(camera_json)
 
 class Part:
 
@@ -280,16 +295,16 @@ class Part:
         Part
     '''
 
-    name       : str              = None
- 
-    json_data  : dict             = None
-    obj        : bpy.types.Object = None
-    mesh       : bpy.types.Mesh   = None
-    path       : str              = None
-    ply_path   : str              = None
-    shader_name: str              = "G10/shaders/G10 PBR.json"
-
-    bone_data  : dict             = None 
+    name          : str              = None
+    
+    json_data     : dict             = None
+    obj           : bpy.types.Object = None
+    mesh          : bpy.types.Mesh   = None
+    path          : str              = None
+    ply_path      : str              = None
+    shader_name   : str              = None
+    material_name : str              = None
+    bone_data     : dict             = None 
 
     # Constructor
     def __init__(self, object: bpy.types.Object):
@@ -299,7 +314,8 @@ class Part:
             return
 
         # Set class data
-        self.material_name = object.material_slots[0].name
+        if len(object.material_slots) > 0:
+            self.material_name         = object.material_slots[0].name
         
         # Name
         self.name                  = object.data.name
@@ -311,8 +327,13 @@ class Part:
         self.json_data             = { }
         self.json_data["$schema"]  = "https://raw.githubusercontent.com/Jacob-C-Smith/G10-Schema/main/part-schema.json"
         self.json_data["name"]     = self.name
-        self.json_data["shader"]   = self.shader_name
-        self.json_data["material"] = self.material_name
+        
+        global export_context
+    
+        self.json_data["shader"]   = export_context['shader']
+    
+        if self.material_name is not None:
+            self.json_data["material"] = self.material_name
 
         # Add the part to the cache
         parts[self.name] = self
@@ -346,14 +367,14 @@ class Part:
         bone_groups             = None
         bone_weights            = None
 
-        use_geometry    : bool  = True
-        use_uv_coords   : bool  = True
-        use_normals     : bool  = True
-        use_tangents    : bool  = False 
-        use_bitangents  : bool  = False
-        use_colors      : bool  = False
-        use_bone_groups : bool  = False
-        use_bone_weights: bool  = False
+        use_geometry    : bool  = True if 'xyz'  in export_context['vertex groups'] else False
+        use_uv_coords   : bool  = True if 'uv'   in export_context['vertex groups'] else False
+        use_normals     : bool  = True if 'nxyz' in export_context['vertex groups'] else False
+        use_tangents    : bool  = True if 'txyz' in export_context['vertex groups'] else False
+        use_bitangents  : bool  = True if 'bxyz' in export_context['vertex groups'] else False
+        use_colors      : bool  = True if 'rgb'  in export_context['vertex groups'] else False
+        use_bone_groups : bool  = True if 'bg'   in export_context['vertex groups'] else False
+        use_bone_weights: bool  = True if 'bw'   in export_context['vertex groups'] else False
 
         if use_colors is True:
             active_col_layer = self.mesh.vertex_colors.active.data
@@ -978,33 +999,41 @@ class Material:
         # Construct a texture
         texture_directory: str = directory + "/textures/" + self.name 
 
+        global export_context
+
         # Make a directory for the textures
         try:    os.mkdir(texture_directory)
         except: pass
 
         # Save the albedo texture
-        if self.albedo is not None:
-            self.albedo.save_texture(texture_directory + "/albedo." + "png")
+        if 'albedo' in export_context['material textures']:
+            if self.albedo is not None:
+                self.albedo.save_texture(texture_directory + "/albedo." + "png")
 
-        # Save the roughness texture
-        if self.rough is not None:
-            self.rough.save_texture(texture_directory + "/rough." + "png")
+        # Save the rough texture
+        if 'rough' in export_context['material textures']:
+            if self.rough is not None:
+                self.rough.save_texture(texture_directory + "/rough." + "png")
 
         # Save the metal texture
-        if self.metal is not None:
-            self.metal.save_texture(texture_directory + "/metal." + "png")
+        if 'metal' in export_context['material textures']:
+            if self.metal is not None:
+                self.metal.save_texture(texture_directory + "/metal." + "png")
 
         # Save the normal texture
-        if self.normal is not None:
-            self.normal.save_texture(texture_directory + "/normal." + "png")
+        if 'normal' in export_context['material textures']:
+            if self.normal is not None:
+                self.normal.save_texture(texture_directory + "/normal." + "png")
 
         # Save the ambient occlusion texture
-        if self.ao is not None:
-            self.ao.save_texture(texture_directory + "/ao." + "png")
+        if 'ao' in export_context['material textures']:
+            if self.ao is not None:
+                self.ao.save_texture(texture_directory + "/ao." + "png")
 
         # Save the height texture
-        if self.height is not None:
-            self.height.save_texture(texture_directory + "/height." + "png")
+        if 'height' in export_context['material textures']:
+            if self.height is not None:
+                self.height.save_texture(texture_directory + "/height." + "png")
 
         return
 
@@ -1014,19 +1043,25 @@ class Material:
         self.path              = path
         self.json_data['path'] = self.path
         self.json_data['textures'] = []
-
-        if self.albedo:
-            self.json_data['textures'].append(json.loads(self.albedo.json()))
-        if self.rough:
-            self.json_data['textures'].append(json.loads(self.rough.json()))
-        if self.metal:
-            self.json_data['textures'].append(json.loads(self.metal.json()))
-        if self.normal:
-            self.json_data['textures'].append(json.loads(self.normal.json()))
-        if self.ao:
-            self.json_data['textures'].append(json.loads(self.ao.json()))
-        if self.height:
-            self.json_data['textures'].append(json.loads(self.height.json()))
+        
+        if 'albedo' in export_context['material textures']:
+            if self.albedo:
+                self.json_data['textures'].append(json.loads(self.albedo.json()))
+        if 'rough' in export_context['material textures']:
+            if self.rough:
+                self.json_data['textures'].append(json.loads(self.rough.json()))
+        if 'metal' in export_context['material textures']:
+            if self.metal:
+                self.json_data['textures'].append(json.loads(self.metal.json()))
+        if 'normal' in export_context['material textures']:
+            if self.normal:
+                self.json_data['textures'].append(json.loads(self.normal.json()))
+        if 'ao' in export_context['material textures']:
+            if self.ao:
+                self.json_data['textures'].append(json.loads(self.ao.json()))
+        if 'height' in export_context['material textures']:
+            if self.height:
+                self.json_data['textures'].append(json.loads(self.height.json()))
 
         self.write_to_file(self.path)
 
@@ -1086,16 +1121,6 @@ class LightProbe:
         # Spawn a very small sphere at the location of the light probe
         bpy.ops.mesh.primitive_uv_sphere_add(segments=64, ring_count=32, radius=0.001, calc_uvs=True, enter_editmode=False, align='WORLD', location=(object.location[0], object.location[1], object.location[2]), rotation=(0, 0, 0), scale=(1, 1, 1))
 
-        # TODO: Add a principled BSDF, Base Color = #FFFFFF, Metal=0, Rough=0, 
-
-        # TODO: Investigate: Set smooth shading?
-
-        # Commentary: Maybe set roughness such that it will blur an amount proportional to the resolution
-
-        # TODO: Use equirectangular uv for bake
-
-        # TODO: Bake the GLOSSY with all influences into a generated 32 bit float image
-
         pass
 
     # Bake a scaled down sphere with an equirectangular UV? Maybe use a cubemap?
@@ -1122,9 +1147,9 @@ class Transform:
 
         # Location
         self.location = [ None, None, None ]
-        self.location[0]             = object.location[0]
-        self.location[1]             = object.location[1]
-        self.location[2]             = object.location[2]
+        self.location[0]             = round(object.location[0], 3)
+        self.location[1]             = round(object.location[1], 3)
+        self.location[2]             = round(object.location[2], 3)
 
         # Save the rotation mode
         temp                         = object.rotation_mode
@@ -1134,19 +1159,19 @@ class Transform:
 
         # Rotation 
         self.rotation = [ None, None, None, None ]
-        self.rotation[0]             = object.rotation_quaternion[0]
-        self.rotation[1]             = object.rotation_quaternion[1]
-        self.rotation[2]             = object.rotation_quaternion[2]
-        self.rotation[3]             = object.rotation_quaternion[3]
+        self.rotation[0]             = round(object.rotation_quaternion[0], 3)
+        self.rotation[1]             = round(object.rotation_quaternion[1], 3)
+        self.rotation[2]             = round(object.rotation_quaternion[2], 3)
+        self.rotation[3]             = round(object.rotation_quaternion[3], 3)
         
         # Restore the rotation mode
         object.rotation_mode         = temp
 
         # Scale
         self.scale = [ None, None, None ]
-        self.scale[0]                = object.scale[0]
-        self.scale[1]                = object.scale[1]
-        self.scale[2]                = object.scale[2]
+        self.scale[0]                = round(object.scale[0], 3)
+        self.scale[1]                = round(object.scale[1], 3)
+        self.scale[2]                = round(object.scale[2], 3)
 
         # Set up the dictionary
         self.json_data["$schema"]    = "https://raw.githubusercontent.com/Jacob-C-Smith/G10-Schema/main/transform-schema.json"
@@ -1350,7 +1375,10 @@ class Entity:
         
         self.name      = object.name
         self.part      = Part(object)
-        self.material  = materials.get(object.material_slots[0].material.name) if materials.get(object.material_slots[0].material.name) is not None else Material(object.material_slots[0].material)
+        if len(object.material_slots) > 0:
+            self.material  = materials.get(object.material_slots[0].material.name) if materials.get(object.material_slots[0].material.name) is not None else Material(object.material_slots[0].material)
+        else:
+            self.material  = None
         self.transform = Transform(object)
         self.rigidbody = Rigidbody(object)
         self.collider  = Collider(object)
@@ -1364,14 +1392,19 @@ class Entity:
             self.json_data['parts'] = []
             self.json_data['parts'].append(json.loads(self.part.json()))
 
-        if bool(self.material.json_data):
-            self.json_data['materials'] = []
-            self.json_data['materials'].append(json.loads(self.material.json()))
+        if bool(self.material):
+            if bool(self.material.json_data):
+                self.json_data['materials'] = []
+                self.json_data['materials'].append(json.loads(self.material.json()))
 
-        self.json_data['shader'] = 'G10/shaders/G10 PBR.json'
+        global export_context 
+
+        self.json_data['shader'] = export_context['shader']
+
+        print(f"EXPORT CONTEXT SHADER {export_context['shader']}")
 
         if bool(self.transform.json_data):
-            self.json_data['transform'] = json.loads(self.transform.json())
+            self.json_data['transform'] = json.loads(self.transform.json(), parse_float=lambda x: round(float(x), 3))
 
         if bool(self.rigidbody.json_data):
             self.json_data['rigidbody'] = json.loads(self.rigidbody.json())
@@ -1380,7 +1413,7 @@ class Entity:
             self.json_data['collider'] = json.loads(self.collider.json())
 
         if bool(object.parent):
-            if isinstance(object.partent, bpy.types.Armature):
+            if isinstance(object.parent, bpy.types.Armature):
                 self.rig = Rig(object.parent)
                 self.json_data['rig'] = json.loads(self.rig.json())
 
@@ -1580,17 +1613,42 @@ class Scene:
 
             # Default case
             else:
-                print("[gxport] [Scene] Unrecognized object in scene \"" + scene.name + "\"")
+                print("[gport] [Export] [Scene] Unrecognized object in scene \"" + scene.name + "\"")
             
-        # Construct the skybox, if the scene has a world
+        # If the scene has a world
         if isinstance(scene.world, bpy.types.World):
+            
+            # If the world has a 'World Output' node in the node_tree
+            if scene.world.node_tree.nodes.find('World Output') > -1:
 
-            # Construct the skybox
-            self.skybox = Skybox(scene.world)
+                # If there is a link to another node
+                if len(scene.world.node_tree.nodes['World Output'].inputs[0].links) == 1:
+
+                    # If there is a 'Background' node
+                    if scene.world.node_tree.nodes['World Output'].inputs[0].links[0].from_node.type == 'BACKGROUND':
+                        
+                        # Construct the skybox
+                        self.skybox = Skybox(scene.world)
             
         return
 
     def json(self):
+
+
+        if bool(self.json_data["entities"])     == False :
+            self.json_data.pop("entities")
+
+        if bool(self.json_data["cameras"])      == False :
+            self.json_data.pop("cameras")
+
+        if bool(self.json_data["lights"])       == False :
+            self.json_data.pop("lights")
+
+        if bool(self.json_data["light probes"]) == False :
+            self.json_data.pop("light probes")
+
+        if bool(self.json_data["skybox"])       == False :
+            self.json_data.pop("skybox")
 
         return json.dumps(self.json_data,indent=4)
 
@@ -1934,8 +1992,9 @@ class Rig:
 
         self.actions = []
 
-        for action in object.animation_data.nla_tracks:
-            self.actions.append(Action(action))
+        if len(object.animation_data.nla_tracks) > 0:
+            for action in object.animation_data.nla_tracks:
+                self.actions.append(Action(action))
 
         for action in self.actions:
             for pose in action.pose_sequence:
@@ -1962,12 +2021,11 @@ class Rig:
         self.json_data['part name']        = object.children[0].name
         self.json_data['actions']          = []
 
-        for a in self.actions:
-            self.json_data['actions'].append(json.loads(a.json()))
+        if len(self.actions) > 0:
+            for a in self.actions:
+                self.json_data['actions'].append(json.loads(a.json()))
 
         self.json_data['bones']            = json.loads(self.bone.json())
-
-
 
         object.animation_data.action = context_action
 

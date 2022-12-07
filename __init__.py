@@ -63,11 +63,12 @@ from .g10_blender import (
     Rig
 )
 
-materials: dict = {}
-entities:  dict = {}
-parts:     dict = {}
+materials:  dict = {}
+entities:   dict = {}
+parts:      dict = {}
+g10_source: dict = os.environ["G10_SOURCE_PATH"]
 
-class GPropertyCollection ( bpy.types.PropertyGroup ):
+class GPropertyCollection          ( bpy.types.PropertyGroup ):
     """
     A class used to store project path data
 
@@ -79,7 +80,7 @@ class GPropertyCollection ( bpy.types.PropertyGroup ):
     name: StringProperty()
     path: StringProperty(subtype="DIR_PATH")
 
-class GPort_Preferences ( AddonPreferences ):
+class GPort_Preferences            ( AddonPreferences ):
     """
     A class for addon preferences
 
@@ -112,7 +113,7 @@ class GPort_Preferences ( AddonPreferences ):
         box    = layout.box()
 
         # Project path
-        box.label(text="Project paths", icon='FILEBROWSER')
+        box.label(text="G10 project paths", icon='FILEBROWSER')
 
         # Divide the box into 2 columns. One for name and one for path
         split  = box.split(factor=0.35)
@@ -149,7 +150,7 @@ class GPort_Preferences ( AddonPreferences ):
         r.alignment = 'RIGHT'
         r.operator("gport.add_project_path", text='',icon='ADD', emboss=False)
 
-class GPORT_OT_add_project_path ( Operator ):
+class GPORT_OT_add_project_path    ( Operator ):
     """
     An operation class for adding a new project in the addon preferences panel
     """
@@ -203,8 +204,8 @@ c = (
 def menu_func_export(self, context):
     self.layout.operator(gxport.bl_idname, text="G10 Scene (.json)")
 
-#def menu_func_import(self, context):
-    #self.layout.operator(gimport.bl_idname, text="Import G10 Scene (.json)")
+def menu_func_import(self, context):
+    self.layout.operator(gimport.bl_idname, text="Import G10 Scene (.json)")
 
 def register():
     
@@ -214,7 +215,7 @@ def register():
         # Register the iterated class
         bpy.utils.register_class(cl)
 
-    # Add an export option
+    # Add an export option under File > Export > 
     bpy.types.TOPBAR_MT_file_export.append(menu_func_export)
 
     # Add an import option under File > Import > 
