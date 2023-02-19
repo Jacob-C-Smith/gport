@@ -15,7 +15,7 @@ from bpy.types           import Operator, AddonPreferences
 materials      : dict = {}
 entities       : dict = {}
 parts          : dict = {}
-g10_source     : dict = os.environ["G10_SOURCE_PATH"]
+g10_source     : dict = os.environ["G10_SOURCE_PATH"] if os.environ.get("G10_SOURCE_PATH") is not None else ""
 export_context : dict = None
 
 def set_export_context (context : dict):

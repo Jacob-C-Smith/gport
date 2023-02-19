@@ -37,10 +37,34 @@ from .g10_blender import (
     clear_export_context
 )
 
-last_shader_option = ""
+attachment_types : dict = {
+    "undefined"                          : "SHADING_BBOX",
+    "general"                            : "FILE_IMAGE",
+    "color attachment"                   : "IMAGE_RGB_ALPHA",
+    "depth stencil attachment"           : "IMAGE_ZDEPTH",
+    "depth stencil read only"            : "IMAGE_ZDEPTH",
+    "shader read only"                   : "SEQ_PREVIEW",
+    "transfer source"                    : "COPYDOWN",
+    "transfer destination"               : "PASTEDOWN",
+    "pre initialized"                    : "SHADERFX",
+    "depth read only stencil attachment" : "IMAGE_ZDEPTH",
+    "depth attachment stencil read only" : "IMAGE_ZDEPTH",
+    "depth attachment"                   : "IMAGE_ZDEPTH",
+    "depth read only"                    : "IMAGE_ZDEPTH",
+    "stencil attachment"                 : "GREASEPENCIL",
+    "stencil read only"                  : "GREASEPENCIL",
+    "read only"                          : "SEQ_PREVIEW",
+    "attachment"                         : "APPEND_BLEND",
+    "present source"                     : "IMAGE_BACKGROUND"
+}
+
+last_shader_option   = ""
+last_renderer_option = ""
 
 g10_source: dict = os.environ["G10_SOURCE_PATH"]
 shader_files     = os.listdir(f"{g10_source}/G10/shaders/")
+renderer_files   = os.listdir(f"{g10_source}/G10/renderers/")
+last_renderer_dict: dict = {}
 
 def add_project_names_cb(self, context):
     items = []
@@ -51,6 +75,14 @@ def add_project_names_cb(self, context):
 def add_shader_names_cb(self, context):
     items = []
     for a in shader_files:
+        if str(a).endswith(".json"):
+            z = f"{a.rsplit('.json')[0]}"
+            items.append( ( z, z, "") )
+    return items
+
+def add_renderer_names_cb(self, context):
+    items = []
+    for a in renderer_files:
         if str(a).endswith(".json"):
             z = f"{a.rsplit('.json')[0]}"
             items.append( ( z, z, "") )
@@ -76,10 +108,11 @@ class gxport(Operator, ExportHelper):
     )
     
     CONTEXT_TABS    = {
-        ("General", "General", "General"),
-        ("Scene"  , "Scene"  , "Scene"),
-        ("Bake"   , "Bake"   , "Bake"),
-        ("Shading", "Shading", "Shading")
+        ("General" , "General" , "General"),
+        ("Scene"   , "Scene"   , "Scene"),
+        ("Bake"    , "Bake"    , "Bake"),
+        ("Shading" , "Shading" , "Shading"),
+        ("Renderer", "Renderer", "Renderer")
     }
     
     SCENE_OBJECTS   = {
@@ -206,6 +239,13 @@ class gxport(Operator, ExportHelper):
         name        = "",
         items       = add_shader_names_cb,
         description = "The shader that will be used to draw entities"
+    )
+
+    # Properties for renderers
+    renderer_options: EnumProperty(
+        name        = "",
+        items       = add_renderer_names_cb,
+        description = "The renderer that will be used to draw the scene"
     )
     
     shader_path: StringProperty(
@@ -749,7 +789,7 @@ class gxport(Operator, ExportHelper):
     def draw_light_probe_settings(self, context):
         layout = self.layout
         box = layout.box()
-        box.label(text='Light  dimensions', icon='OUTLINER_OB_LIGHTPROBE')
+        box.label(text='Reflection probe dimensions', icon='OUTLINER_OB_LIGHTPROBE')
         r=box.row()
         r.prop(self, "light_probe_dim")
         sr = r.row()
@@ -757,6 +797,53 @@ class gxport(Operator, ExportHelper):
         
         return
     
+    # Draw the renderer tab
+    def draw_renderer_settings(self, context):
+        layout = self.layout
+        box    = layout.box() 
+
+        box.label(text='Renderer', icon='NODE_MATERIAL')
+
+        global last_renderer_option
+        global last_renderer_dict
+
+        box.prop(self, "renderer_options")
+        
+        if self.renderer_options != last_renderer_option:
+
+            last_renderer_option = self.renderer_options
+
+            items         : list = [ ]
+            renderer_path : str  = None
+            renderer_text : str  = None
+            l             : list = os.listdir(f"{g10_source}/G10/renderers/")
+
+            for a in l:
+                if str(a).endswith(".json"):
+                    items.append(f"{a}")
+
+            s_name : str = last_renderer_option
+            renderer_path = f"{g10_source}/G10/renderers/{s_name}.json"
+
+            # Write the JSON data to the specified path
+            with open(renderer_path, "r") as f:
+                try: renderer_text = f.read()
+                except FileExistsError: pass
+
+            last_renderer_dict = json.loads(renderer_text)
+
+        box = layout.box()
+        box.label(text='Attachments', icon='APPEND_BLEND')
+
+        for a in last_renderer_dict['attachments']:
+            box.label(text=a["name"], icon=attachment_types[a["final layout"]])
+
+
+        box = layout.box()
+        box.label(text='Render Passes', icon='RENDER_RESULT')
+
+        return
+
     # Draw vertex group settings
     def draw_mesh_settings(self, context):
         layout = self.layout
@@ -845,5 +932,7 @@ class gxport(Operator, ExportHelper):
             self.draw_shader_settings(context)
             self.draw_material_settings(context)
             self.draw_mesh_settings(context)
+        if self.context_tab == 'Renderer':
+            self.draw_renderer_settings(context)
 
         return 

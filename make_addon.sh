@@ -1,0 +1,1 @@
+rm gport.zip;zip gport.zip ../gport/ -r

@@ -18,7 +18,7 @@ bl_info = {
     "description" : "Export a Blender scene to G10, or import a G10 scene to Blender",
     "author"      : "Jacob Smith",
     "version"     : (0, 1),
-    "blender"     : (3, 2, 0),
+    "blender"     : (3, 4, 0),
     "location"    : "File > Import-Export",
     "warning"     : "This software has not yet been rigorously tested, and may not meet commercial software standards",
     "doc_url"     : "https://github.com/Jacob-C-Smith/GPort/",
