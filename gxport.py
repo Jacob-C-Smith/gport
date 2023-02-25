@@ -838,9 +838,13 @@ class gxport(Operator, ExportHelper):
         for a in last_renderer_dict['attachments']:
             box.label(text=a["name"], icon=attachment_types[a["final layout"]])
 
-
         box = layout.box()
         box.label(text='Render Passes', icon='RENDER_RESULT')
+        for rp in last_renderer_dict['passes']:
+            box.label(text=rp['name'],icon='IMAGE_DATA')
+            b2 = box.box()
+            for sp in rp['subpasses']:
+                b2.label(text=sp['name'])
 
         return
 
